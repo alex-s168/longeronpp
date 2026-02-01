@@ -9,51 +9,29 @@ on:
 jobs:
   analyse:
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-      security-events: write
 
-    strategy:
-      fail-fast: false
-      matrix:
-        # Janky tag-based steps. TODO: figure out iwyu
-        tool:
-          - 'CodeQL --cfg --build'
-          - 'clang-tidy --cfg'
-        buildconfig: [Debug]
-        exclude:
-         - tool: ${{ !github.event.pull_request && 'clang-tidy --cfg' }}
+    env:
+      CXX: clang++
 
     steps:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 1
         submodules: recursive
-        
-    - name: Initialize CodeQL
-      if: ${{ startsWith(matrix.tool, 'CodeQL') }}
-      uses: github/codeql-action/init@v2
-      with:
-        languages: cpp
 
-    - name: Configure
-      if: ${{ contains(matrix.tool, '--cfg') }}
+    - name: deps
       run: |
-        cmake -B build -DLONGERON_BUILD_TESTS=ON -DLONGERON_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=R${{ matrix.buildconfig }}
-        
-    - name: Compile Unit Tests
-      if: ${{ contains(matrix.tool, '--build') }}
-      run: |
-        cmake --build build --parallel --config ${{ matrix.buildconfig }}
-        
-    - name: Perform CodeQL Analysis
-      if: ${{ startsWith(matrix.tool, 'CodeQL') }}
-      uses: github/codeql-action/analyze@v2
+        sudo apt install -y meson clang clang-tidy
 
-    - name: Clang Tidy Review
-      if: ${{ startsWith(matrix.tool, 'clang-tidy') }}
-      uses: ZedThree/clang-tidy-review@v0.8.3
-      with:
-        build_dir: build
+    - name: configure
+      run: |
+        meson setup build
+
+    - name: examples & tests
+      run: |
+        meson compile -C build
+        meson test -C build
+
+    - name: clang-tidy
+      run: |
+        ninja -C build clang-tidy
